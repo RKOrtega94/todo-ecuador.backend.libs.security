@@ -11,10 +11,12 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
 import org.springframework.security.config.annotation.web.configurers.ExceptionHandlingConfigurer;
-import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.cors.CorsConfigurationSource;
+
+import javax.crypto.spec.SecretKeySpec;
 
 @Slf4j
 @Configuration
@@ -53,7 +55,7 @@ public class SecurityConfig {
             securityProperties.getPublicPutPaths().forEach(path -> authorize.requestMatchers(HttpMethod.PUT, path).permitAll());
         if (securityProperties.getPublicDeletePaths() != null)
             securityProperties.getPublicDeletePaths().forEach(path -> authorize.requestMatchers(HttpMethod.DELETE, path).permitAll());
-        authorize.anyRequest().permitAll();
+        authorize.anyRequest().authenticated();
     }
 
     private void configureExceptionHandling(ExceptionHandlingConfigurer<HttpSecurity> exceptions) {
@@ -67,9 +69,7 @@ public class SecurityConfig {
         if (securityProperties.getJwtSigningKey() == null || securityProperties.getJwtSigningKey().isEmpty()) {
             throw new IllegalStateException("JWT signing key must be configured in security.jwtSigningKey");
         }
-        return NimbusJwtDecoder.withSecretKey(
-            new javax.crypto.spec.SecretKeySpec(securityProperties.getJwtSigningKey().getBytes(), "HmacSHA256")
-        ).build();
+        return NimbusJwtDecoder.withSecretKey(new SecretKeySpec(securityProperties.getJwtSigningKey().getBytes(), "HmacSHA256")).build();
     }
 
 }
