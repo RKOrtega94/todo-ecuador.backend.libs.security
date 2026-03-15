@@ -6,23 +6,28 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.annotation.web.configurers.AuthorizeHttpRequestsConfigurer;
-import org.springframework.security.config.annotation.web.configurers.ExceptionHandlingConfigurer;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
+import org.springframework.security.oauth2.server.resource.web.BearerTokenAuthenticationEntryPoint;
+import org.springframework.security.oauth2.server.resource.web.access.BearerTokenAccessDeniedHandler;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.web.cors.CorsConfigurationSource;
-
-import javax.crypto.spec.SecretKeySpec;
 
 @Slf4j
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity
 @EnableConfigurationProperties(SecurityProperties.class)
 public class SecurityConfig {
+    private static final String DEFAULT_AUTH_SERVER_ISSUER = "http://localhost:9000";
+
     private final SecurityProperties securityProperties;
 
     public SecurityConfig(SecurityProperties securityProperties) {
@@ -30,16 +35,20 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, CorsConfigurationSource corsConfigurationSource) {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http //
                 .csrf(AbstractHttpConfigurer::disable) //
-                .cors(cors -> cors.configurationSource(corsConfigurationSource)) //
+                .cors(Customizer.withDefaults()) //
                 .formLogin(AbstractHttpConfigurer::disable) //
                 .httpBasic(AbstractHttpConfigurer::disable) //
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()) //
-                        .accessDeniedHandler((request, response, accessDeniedException) -> response.sendError(403, accessDeniedException.getMessage())) //
-                        .authenticationEntryPoint((request, response, authException) -> response.sendError(401, authException.getMessage()))) //
-                .exceptionHandling(this::configureExceptionHandling) //
+                .requestCache(AbstractHttpConfigurer::disable) //
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)) //
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt
+                        .decoder(jwtDecoder())
+                        .jwtAuthenticationConverter(jwtAuthenticationConverter()))) //
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(new BearerTokenAuthenticationEntryPoint())
+                        .accessDeniedHandler(new BearerTokenAccessDeniedHandler())) //
                 .authorizeHttpRequests(this::authorizeConfig);
         return http.build();
     }
@@ -58,18 +67,22 @@ public class SecurityConfig {
         authorize.anyRequest().authenticated();
     }
 
-    private void configureExceptionHandling(ExceptionHandlingConfigurer<HttpSecurity> exceptions) {
-        exceptions //
-                .accessDeniedHandler((request, response, accessDeniedException) -> response.sendError(403, accessDeniedException.getMessage())) //
-                .authenticationEntryPoint((request, response, authException) -> response.sendError(401, authException.getMessage()));
+    @Bean
+    public JwtDecoder jwtDecoder() {
+        String issuer = securityProperties.getIssuerUri();
+        if (issuer == null || issuer.isBlank()) issuer = DEFAULT_AUTH_SERVER_ISSUER;
+        log.info("Configuring JWT decoder with authorization server issuer: {}", issuer);
+        return NimbusJwtDecoder.withIssuerLocation(issuer).build();
     }
 
     @Bean
-    public JwtDecoder jwtDecoder() {
-        if (securityProperties.getJwtSigningKey() == null || securityProperties.getJwtSigningKey().isEmpty()) {
-            throw new IllegalStateException("JWT signing key must be configured in security.jwtSigningKey");
-        }
-        return NimbusJwtDecoder.withSecretKey(new SecretKeySpec(securityProperties.getJwtSigningKey().getBytes(), "HmacSHA256")).build();
+    public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter authoritiesConverter = new JwtGrantedAuthoritiesConverter();
+        authoritiesConverter.setAuthoritiesClaimName("authorities");
+        authoritiesConverter.setAuthorityPrefix("ROLE_");
+        JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        converter.setJwtGrantedAuthoritiesConverter(authoritiesConverter);
+        return converter;
     }
 
 }

@@ -16,4 +16,5 @@ public class SecurityProperties {
     private List<String> publicPutPaths;
     private List<String> publicDeletePaths;
     private String jwtSigningKey;
+    private String issuerUri;
 }
