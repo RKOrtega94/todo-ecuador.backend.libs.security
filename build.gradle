@@ -21,4 +21,5 @@ dependencies {
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor:4.0.3'
     implementation 'org.springframework:spring-context'
     implementation 'org.springframework.boot:spring-boot:4.0.3'
+    implementation 'com.fasterxml.jackson.core:jackson-databind'
 }
